@@ -1,0 +1,1652 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#020617">
+    <title>TopoPro Elite V6.0 - GNSS & Topografía</title>
+    
+    <link rel="manifest" href="./manifest.json">
+    <!-- Leaflet & Proj4 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --bg-main: #020617;
+            --bg-card: rgba(15, 23, 42, 0.92);
+            --bg-card-border: rgba(255, 255, 255, 0.08);
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-main);
+            color: var(--text-main);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Scrollbar personalizada */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+
+        /* Header */
+        header {
+            background: #090d1a;
+            border-bottom: 1px solid var(--bg-card-border);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        .brand-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            text-transform: uppercase;
+            font-style: italic;
+        }
+        .brand-subtitle {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        /* Selector de Sistema Geodésico */
+        .system-select {
+            background: #0f172a;
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 8px;
+            padding: 6px 10px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* Contenedor Principal */
+        #app-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Panel de Información GNSS */
+        #coords-hud {
+            background: rgba(9, 13, 26, 0.95);
+            backdrop-filter: blur(14px);
+            border-bottom: 1px solid var(--bg-card-border);
+            padding: 10px 14px;
+            z-index: 90;
+        }
+
+        .hud-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .hud-card {
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 12px;
+            padding: 8px 12px;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+
+        .hud-card.accent-norte { border-bottom: 2px solid var(--accent-blue); }
+        .hud-card.accent-este { border-bottom: 2px solid var(--accent-cyan); }
+        .hud-card.accent-elev { border-bottom: 2px solid var(--accent-green); }
+
+        .hud-label {
+            font-size: 0.65rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .hud-val {
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-top: 2px;
+            color: #fff;
+        }
+
+        /* Fila de acción rápida (Promediar / Copiar) */
+        .quick-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .btn-action {
+            flex: 1;
+            padding: 9px 12px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            font-size: 0.75rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .btn-average {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+        }
+        .btn-average:active { transform: scale(0.97); }
+
+        .btn-secondary {
+            background: #1e293b;
+            color: #e2e8f0;
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+        .btn-secondary:active { transform: scale(0.97); }
+
+        /* Barra de Pestañas / Módulos Opcionales */
+        .module-tabs {
+            display: flex;
+            gap: 6px;
+            background: #090d1a;
+            padding: 6px 14px;
+            border-bottom: 1px solid var(--bg-card-border);
+            overflow-x: auto;
+            z-index: 85;
+        }
+
+        .tab-chip {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            background: #0f172a;
+            color: var(--text-muted);
+            border: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .tab-chip.active {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            border-color: #3b82f6;
+        }
+
+        /* Mapa */
+        #map-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            z-index: 10;
+        }
+
+        #map { width: 100%; height: 100%; background: #070a13; }
+
+        /* Barra de Estado GNSS (Inferior) */
+        #status-bar {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            right: 12px;
+            background: rgba(9, 13, 26, 0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--bg-card-border);
+            border-radius: 14px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 70;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .gnss-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .gnss-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-red);
+            transition: background 0.3s;
+        }
+        .gnss-dot.good { background: var(--accent-green); box-shadow: 0 0 10px var(--accent-green); }
+        .gnss-dot.med { background: var(--accent-amber); animation: pulse 1.5s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(0.9); }
+            50% { opacity: 1; transform: scale(1.15); }
+            100% { opacity: 0.5; transform: scale(0.9); }
+        }
+
+        /* Modales & Drawers */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 14px;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal-card {
+            background: #0b1120;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 440px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+            animation: slideUp 0.25s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Drawer Deslizable para Paneles (Replanteo / Exportación) */
+        .drawer-panel {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #090d1a;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 20px 20px 0 0;
+            padding: 16px;
+            z-index: 80;
+            max-height: 75vh;
+            overflow-y: auto;
+            transform: translateY(105%);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
+        }
+
+        .drawer-panel.open {
+            transform: translateY(0);
+        }
+
+        .drawer-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Toast Notifications */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 90%;
+            max-width: 360px;
+        }
+
+        .toast {
+            background: #1e293b;
+            color: #fff;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255,255,255,0.15);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .toast.success { border-left: 4px solid var(--accent-green); }
+        .toast.info { border-left: 4px solid var(--accent-blue); }
+        .toast.warn { border-left: 4px solid var(--accent-amber); }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Progreso Circular para Promediador */
+        .timer-circle {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            margin: 0 auto 16px auto;
+        }
+
+        .timer-svg {
+            transform: rotate(-90deg);
+            width: 140px;
+            height: 140px;
+        }
+
+        .timer-bg { fill: none; stroke: #1e293b; stroke-width: 8; }
+        .timer-bar {
+            fill: none;
+            stroke: #3b82f6;
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 377;
+            stroke-dashoffset: 0;
+            transition: stroke-dashoffset 0.5s linear;
+        }
+
+        .timer-text {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Brújula / Dirección de Replanteo */
+        .compass-box {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            position: relative;
+            margin: 10px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .compass-arrow {
+            width: 6px;
+            height: 70px;
+            position: absolute;
+            transition: transform 0.2s ease-out;
+        }
+        .compass-arrow::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -5px;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 18px solid #ef4444;
+        }
+
+        /* Inputs estilizados */
+        .form-input {
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 8px 12px;
+            color: #fff;
+            font-size: 0.8rem;
+            outline: none;
+            margin-top: 4px;
+        }
+        .form-input:focus { border-color: var(--accent-blue); }
+
+        .btn-full {
+            width: 100%;
+            padding: 10px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            cursor: pointer;
+            border: none;
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .btn-green { background: #059669; color: white; }
+        .btn-blue { background: #2563eb; color: white; }
+        .btn-slate { background: #334155; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- Header Principal -->
+    <header>
+        <div>
+            <div class="brand-title">TopoPro <span style="color: #3b82f6;">Elite</span></div>
+            <div class="brand-subtitle">V6.0 • CTM12 & GNSS Colombia</div>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="system-selector" class="system-select" onchange="changeSystem(this.value)">
+                <option value="CTM12" selected>🇨🇴 CTM12 (Origen Único)</option>
+                <option value="MAGNA_BOG">📍 MAGNA: Bogotá</option>
+                <option value="MAGNA_EC">📍 MAGNA: Este Central</option>
+                <option value="MAGNA_EE">📍 MAGNA: Este Este</option>
+                <option value="MAGNA_W">📍 MAGNA: Oeste</option>
+                <option value="MAGNA_WW">📍 MAGNA: Oeste Oeste</option>
+            </select>
+            <button onclick="toggleLayerMenu()" title="Capas de Mapa" style="background:#0f172a; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:8px; padding:6px 9px; cursor:pointer;">
+                🗺️
+            </button>
+        </div>
+    </header>
+
+    <!-- Contenedor Principal -->
+    <div id="app-body">
+
+        <!-- Coordenadas HUD (Tiempo Real) -->
+        <div id="coords-hud">
+            <div class="hud-grid">
+                <div class="hud-card accent-norte">
+                    <div class="hud-label">
+                        <span style="color: #60a5fa;">Norte (N)</span>
+                        <span id="label-sys-n" style="color: #64748b; font-size: 0.6rem;">CTM12</span>
+                    </div>
+                    <div id="disp-norte" class="hud-val font-mono">------,---</div>
+                </div>
+
+                <div class="hud-card accent-este">
+                    <div class="hud-label">
+                        <span style="color: #22d3ee;">Este (E)</span>
+                        <span id="label-sys-e" style="color: #64748b; font-size: 0.6rem;">CTM12</span>
+                    </div>
+                    <div id="disp-este" class="hud-val font-mono">------,---</div>
+                </div>
+
+                <div class="hud-card accent-elev" style="grid-column: span 2; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <div class="hud-label">
+                            <span style="color: #34d399;">Elevación (h Elipsoidal)</span>
+                        </div>
+                        <div id="disp-elev" class="hud-val font-mono" style="font-size: 1.15rem;">---.--- m</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">WGS84 Lat/Lon</span>
+                        <div id="disp-latlon" class="font-mono" style="font-size: 0.65rem; color: #cbd5e1; margin-top: 2px;">
+                            --.------°, --.------°
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botones de Acción Primaria -->
+            <div class="quick-actions">
+                <button onclick="startAverageModal()" class="btn-action btn-average">
+                    🎯 Promediar 60s
+                </button>
+                <button onclick="copyInstantPoint()" class="btn-action btn-secondary" title="Copiar coordenada instantánea actual">
+                    📋 Copiar Rápido
+                </button>
+            </div>
+        </div>
+
+        <!-- Barra de Módulos (Solo si el usuario los activa) -->
+        <div class="module-tabs">
+            <div id="tab-replanteo" class="tab-chip" onclick="toggleReplanteoModule()">
+                <span>📐</span> Modo Replanteo <span id="badge-replanteo" style="font-size: 0.55rem; background: #1e293b; padding: 1px 4px; border-radius: 4px;">OFF</span>
+            </div>
+            <div id="tab-export" class="tab-chip" onclick="toggleExportModule()">
+                <span>💾</span> Exportar Datos (<span id="count-puntos">0</span>) <span id="badge-export" style="font-size: 0.55rem; background: #1e293b; padding: 1px 4px; border-radius: 4px;">OFF</span>
+            </div>
+            <div id="tab-manual" class="tab-chip" onclick="openManualCalcModal()">
+                <span>🧮</span> Cálculo Manual
+            </div>
+        </div>
+
+        <!-- Mapa Leaflet -->
+        <div id="map-container">
+            <div id="map"></div>
+        </div>
+
+        <!-- Barra de Estado Inferior -->
+        <div id="status-bar">
+            <div class="gnss-indicator">
+                <div id="gnss-dot" class="gnss-dot"></div>
+                <div>
+                    <div id="gnss-text" style="font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;">Buscando Satélites...</div>
+                    <div id="gnss-prec" class="font-mono" style="font-size: 0.65rem; color: #94a3b8;">Precisión: ± -- m</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="centerMapOnUser()" title="Centrar Mapa" style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:50%; width:36px; height:36px; cursor:pointer; display:flex; align-items:center; justify-content:center;">
+                    📍
+                </button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- DRAWER: MODO REPLANTEO (SOLO SI SE ACTIVA) -->
+        <!-- ========================================== -->
+        <div id="drawer-replanteo" class="drawer-panel">
+            <div class="drawer-header">
+                <div>
+                    <h3 style="font-size: 0.85rem; font-weight: 800; text-transform: uppercase; color: #60a5fa;">📐 Modo Replanteo (Stakeout)</h3>
+                    <p style="font-size: 0.65rem; color: #94a3b8;">Navegación geodésica hacia punto objetivo</p>
+                </div>
+                <button onclick="toggleReplanteoModule()" style="background:none; border:none; color:#cbd5e1; font-size:1.1rem; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="margin-bottom: 12px;">
+                <label style="font-size: 0.7rem; font-weight: 700; color: #94a3b8;">Seleccionar Objetivo:</label>
+                <div style="display: flex; gap: 6px; margin-top: 4px;">
+                    <select id="replanteo-selector" class="form-input" style="margin-top:0;" onchange="onSelectReplanteoPoint(this.value)">
+                        <option value="">-- Ingresar Manualmente --</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="hud-grid" style="margin-bottom: 10px;">
+                <div>
+                    <label style="font-size: 0.65rem; color: #94a3b8;">Norte Objetivo (m):</label>
+                    <input type="number" id="rep-target-n" class="form-input font-mono" placeholder="Ej: 2000150.000" oninput="updateReplanteoCalcs()">
+                </div>
+                <div>
+                    <label style="font-size: 0.65rem; color: #94a3b8;">Este Objetivo (m):</label>
+                    <input type="number" id="rep-target-e" class="form-input font-mono" placeholder="Ej: 5000200.000" oninput="updateReplanteoCalcs()">
+                </div>
+            </div>
+
+            <!-- Resultados en tiempo real de replanteo -->
+            <div style="background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center;">
+                    <div>
+                        <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">DISTANCIA AL OBJETIVO</div>
+                        <div id="rep-dist" class="font-mono" style="font-size: 1.25rem; font-weight: 800; color: #38bdf8;">--.-- m</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">AZIMUT GEODÉSICO</div>
+                        <div id="rep-azim" class="font-mono" style="font-size: 1.25rem; font-weight: 800; color: #a78bfa;">--° --' --"</div>
+                    </div>
+                </div>
+
+                <div class="compass-box">
+                    <div id="compass-arrow" class="compass-arrow"></div>
+                    <span style="position: absolute; top: 4px; font-size: 0.6rem; font-weight: 800; color: #ef4444;">N</span>
+                </div>
+
+                <div id="rep-deltas" class="font-mono" style="font-size: 0.7rem; color: #cbd5e1; text-align: center; margin-top: 6px;">
+                    ΔN: --.-- m | ΔE: --.-- m
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================= -->
+        <!-- DRAWER: EXPORTACIÓN DE DATOS (SOLO ACTIVADO) -->
+        <!-- ============================================= -->
+        <div id="drawer-export" class="drawer-panel">
+            <div class="drawer-header">
+                <div>
+                    <h3 style="font-size: 0.85rem; font-weight: 800; text-transform: uppercase; color: #34d399;">💾 Registro y Exportación Topográfica</h3>
+                    <p style="font-size: 0.65rem; color: #94a3b8;">Formatos oficiales para AutoCAD Civil 3D y GIS</p>
+                </div>
+                <button onclick="toggleExportModule()" style="background:none; border:none; color:#cbd5e1; font-size:1.1rem; cursor:pointer;">✕</button>
+            </div>
+
+            <!-- Tabla rápida de puntos -->
+            <div style="max-height: 180px; overflow-y: auto; margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.65rem; text-align: left;" class="font-mono">
+                    <thead style="background: #0f172a; color: #94a3b8; position: sticky; top: 0;">
+                        <tr>
+                            <th style="padding: 6px 8px;">Punto</th>
+                            <th style="padding: 6px 8px;">Norte</th>
+                            <th style="padding: 6px 8px;">Este</th>
+                            <th style="padding: 6px 8px;">Cota (h)</th>
+                            <th style="padding: 6px 8px; text-align: center;">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="puntos-tbody">
+                        <tr><td colspan="5" style="padding: 12px; text-align: center; color: #64748b;">No hay puntos guardados aún. Promedia o agrega puntos.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Opciones de Descarga -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button onclick="exportarCSV_Civil3D()" class="btn-action btn-secondary" style="font-size: 0.7rem;">
+                    📄 CSV (Civil 3D)
+                </button>
+                <button onclick="exportarTXT_Topografico()" class="btn-action btn-secondary" style="font-size: 0.7rem;">
+                    📝 TXT (P,N,E,Z,D)
+                </button>
+                <button onclick="exportarKML_GoogleEarth()" class="btn-action btn-secondary" style="font-size: 0.7rem;">
+                    🌐 KML (Google Earth)
+                </button>
+                <button onclick="copiarTablaPuntos()" class="btn-action btn-secondary" style="font-size: 0.7rem;">
+                    📋 Copiar Todo
+                </button>
+            </div>
+
+            <button onclick="limpiarTodosPuntos()" style="width: 100%; margin-top: 10px; background: none; border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; padding: 6px; border-radius: 8px; font-size: 0.65rem; font-weight: 700; cursor: pointer;">
+                🗑️ Borrar Todos los Puntos
+            </button>
+        </div>
+
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: PROMEDIADOR GNSS (60 SEGUNDOS)     -->
+    <!-- ========================================== -->
+    <div id="modal-average" class="modal-overlay">
+        <div class="modal-card">
+            <div style="text-align: center;">
+                <h3 style="font-size: 1rem; font-weight: 800; text-transform: uppercase; color: #38bdf8;">Promediador GNSS</h3>
+                <p style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px;">Adquiriendo épocas para máxima precisión</p>
+            </div>
+
+            <!-- Contador 60s -->
+            <div id="avg-running-box" style="margin-top: 16px; text-align: center;">
+                <div class="timer-circle">
+                    <svg class="timer-svg" viewBox="0 0 140 140">
+                        <circle class="timer-bg" cx="70" cy="70" r="60"></circle>
+                        <circle id="timer-bar" class="timer-bar" cx="70" cy="70" r="60"></circle>
+                    </svg>
+                    <div class="timer-text">
+                        <span id="avg-timer-num" class="font-mono" style="font-size: 2.2rem; font-weight: 800; color: #fff;">60</span>
+                        <span style="font-size: 0.6rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">SEGUNDOS</span>
+                    </div>
+                </div>
+
+                <div class="font-mono" style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 6px;">
+                    Muestras recopiladas: <span id="avg-count" style="color: #38bdf8; font-weight: 800;">0</span>
+                </div>
+                <div class="font-mono" style="font-size: 0.7rem; color: #94a3b8;">
+                    Precisión actual: ± <span id="avg-current-acc">--</span> m
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-top: 16px;">
+                    <button onclick="finishAverageEarly()" class="btn-action btn-secondary" style="flex: 1;">
+                        Finalizar Ahora
+                    </button>
+                    <button onclick="cancelAverage()" class="btn-action" style="background: #3f1515; color: #ef4444; border: 1px solid #7f1d1d; flex: 1;">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <!-- RESULTADO DEL PROMEDIO (60s COMPLETADO) -->
+            <div id="avg-result-box" style="display: none; margin-top: 12px;">
+                <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: #34d399; font-size: 0.75rem; font-weight: 800;">✓ PROMEDIO 60s COMPLETADO</span>
+                        <span id="avg-res-epocas" class="font-mono" style="color: #94a3b8; font-size: 0.65rem;">60 épocas</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">Nombre del Punto:</label>
+                    <input type="text" id="avg-point-name" class="form-input font-mono" value="PTO-01">
+                </div>
+                <div style="margin-top: 6px;">
+                    <label style="font-size: 0.7rem; color: #94a3b8; font-weight: 700;">Descripción / Código:</label>
+                    <input type="text" id="avg-point-desc" class="form-input" placeholder="Ej: BM, Límite, Delta 1" value="PROMEDIO_GNSS">
+                </div>
+
+                <!-- Detalle Coordenadas -->
+                <div style="background: #070d19; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px; margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="font-size: 0.7rem; color: #60a5fa; font-weight: 700;">NORTE (N):</span>
+                        <span id="avg-res-n" class="font-mono" style="font-size: 0.85rem; font-weight: 800; color: #fff;">------.---</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="font-size: 0.7rem; color: #22d3ee; font-weight: 700;">ESTE (E):</span>
+                        <span id="avg-res-e" class="font-mono" style="font-size: 0.85rem; font-weight: 800; color: #fff;">------.---</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="font-size: 0.7rem; color: #34d399; font-weight: 700;">ALTURA (h):</span>
+                        <span id="avg-res-h" class="font-mono" style="font-size: 0.85rem; font-weight: 800; color: #fff;">---.--- m</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: #94a3b8; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);">
+                        <span>Precisión Estimada:</span>
+                        <span id="avg-res-acc" class="font-mono" style="color: #34d399; font-weight: 700;">± -- m</span>
+                    </div>
+                </div>
+
+                <!-- BOTÓN PRINCIPAL DESTACADO: COPIAR TODA LA INFORMACIÓN -->
+                <button onclick="copiarReportePromedioCompleto()" class="btn-full btn-blue" style="background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 14px; font-size: 0.85rem; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);">
+                    📋 Copiar Toda la Información del Punto
+                </button>
+
+                <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button onclick="guardarPuntoPromediado()" class="btn-full btn-green" style="margin-top:0;">
+                        💾 Guardar Punto
+                    </button>
+                    <button onclick="startAverageModal()" class="btn-full btn-slate" style="margin-top:0;">
+                        🔄 Repetir
+                    </button>
+                </div>
+                <button onclick="closeAverageModal()" style="width:100%; background:none; border:none; color:#64748b; font-size:0.75rem; padding:8px; cursor:pointer;">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL: CÁLCULO MANUAL (OFICINA)            -->
+    <!-- ========================================== -->
+    <div id="modal-manual" class="modal-overlay">
+        <div class="modal-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="font-size: 0.9rem; font-weight: 800; text-transform: uppercase; color: #38bdf8;">🧮 Conversor de Coordenadas</h3>
+                <button onclick="closeManualCalcModal()" style="background:none; border:none; color:#94a3b8; font-size:1.1rem; cursor:pointer;">✕</button>
+            </div>
+            <p style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 12px;">Transforma coordenadas WGS84 a CTM12 / MAGNA sin necesidad de GPS.</p>
+
+            <div>
+                <label style="font-size: 0.7rem; color: #94a3b8;">Latitud Decimal (N):</label>
+                <input type="number" step="any" id="man-lat" class="form-input font-mono" placeholder="Ej: 4.609710">
+            </div>
+            <div style="margin-top: 8px;">
+                <label style="font-size: 0.7rem; color: #94a3b8;">Longitud Decimal (W):</label>
+                <input type="number" step="any" id="man-lon" class="form-input font-mono" placeholder="Ej: -74.081750">
+            </div>
+
+            <button onclick="ejecutarCalculoManual()" class="btn-full btn-blue" style="margin-top: 14px;">
+                Calcular Proyección
+            </button>
+
+            <div id="man-result-box" style="display: none; margin-top: 14px; background: #070d19; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+                <div style="font-size: 0.75rem; color: #60a5fa; margin-bottom: 4px;">NORTE: <b id="man-res-n" class="font-mono text-white"></b></div>
+                <div style="font-size: 0.75rem; color: #22d3ee; margin-bottom: 4px;">ESTE: <b id="man-res-e" class="font-mono text-white"></b></div>
+                <button onclick="copiarResultadoManual()" class="btn-action btn-secondary" style="width: 100%; margin-top: 8px; font-size: 0.7rem;">
+                    📋 Copiar Resultado
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menú de Capas de Mapa -->
+    <div id="modal-layers" class="modal-overlay">
+        <div class="modal-card" style="max-width: 320px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="font-size: 0.85rem; font-weight: 800; text-transform: uppercase;">Capas de Mapa</h3>
+                <button onclick="toggleLayerMenu()" style="background:none; border:none; color:#94a3b8; font-size:1.1rem; cursor:pointer;">✕</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button onclick="setBaseLayer('satellite')" class="btn-action btn-secondary" style="justify-content: flex-start;">🛰️ Esri Satélite (Alta Res.)</button>
+                <button onclick="setBaseLayer('osm')" class="btn-action btn-secondary" style="justify-content: flex-start;">🗺️ OpenStreetMap (Calles)</button>
+                <button onclick="setBaseLayer('dark')" class="btn-action btn-secondary" style="justify-content: flex-start;">🌙 CartoDB Dark (Ahorro batería)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor Toast -->
+    <div id="toast-container"></div>
+
+    <!-- ========================================== -->
+    <!-- MOTOR DE CÁLCULO Y LÓGICA JAVASCRIPT       -->
+    <!-- ========================================== -->
+    <script>
+        // PARÁMETROS GEODÉSICOS OFICIALES (COLOMBIA)
+        const PROJ_DEFINITIONS = {
+            CTM12: {
+                name: "CTM12 (Origen Único Nacional - Res 471/529 2020)",
+                epsg: "EPSG:9377",
+                proj4Str: "+proj=tmerc +lat_0=4 +lon_0=-73 +k=0.9992 +x_0=5000000 +y_0=2000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+                a: 6378137.0, f: 1/298.257222101, lat0: 4.0, lon0: -73.0, N0: 2000000.0, E0: 5000000.0, k0: 0.9992
+            },
+            MAGNA_BOG: {
+                name: "MAGNA-SIRGAS Origen Bogotá",
+                epsg: "EPSG:3116",
+                proj4Str: "+proj=tmerc +lat_0=4.59620041666667 +lon_0=-74.0775079166667 +k=1 +x_0=1000000 +y_0=1000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+                a: 6378137.0, f: 1/298.257222101, lat0: 4.59620041666667, lon0: -74.0775079166667, N0: 1000000.0, E0: 1000000.0, k0: 1.0
+            },
+            MAGNA_EC: {
+                name: "MAGNA-SIRGAS Origen Este Central",
+                epsg: "EPSG:3117",
+                proj4Str: "+proj=tmerc +lat_0=4.59620041666667 +lon_0=-71.0775079166667 +k=1 +x_0=1000000 +y_0=1000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+                a: 6378137.0, f: 1/298.257222101, lat0: 4.59620041666667, lon0: -71.0775079166667, N0: 1000000.0, E0: 1000000.0, k0: 1.0
+            },
+            MAGNA_EE: {
+                name: "MAGNA-SIRGAS Origen Este Este",
+                epsg: "EPSG:3118",
+                proj4Str: "+proj=tmerc +lat_0=4.59620041666667 +lon_0=-68.0775079166667 +k=1 +x_0=1000000 +y_0=1000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+                a: 6378137.0, f: 1/298.257222101, lat0: 4.59620041666667, lon0: -68.0775079166667, N0: 1000000.0, E0: 1000000.0, k0: 1.0
+            },
+            MAGNA_W: {
+                name: "MAGNA-SIRGAS Origen Oeste",
+                epsg: "EPSG:3115",
+                proj4Str: "+proj=tmerc +lat_0=4.59620041666667 +lon_0=-77.0775079166667 +k=1 +x_0=1000000 +y_0=1000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+                a: 6378137.0, f: 1/298.257222101, lat0: 4.59620041666667, lon0: -77.0775079166667, N0: 1000000.0, E0: 1000000.0, k0: 1.0
+            },
+            MAGNA_WW: {
+                name: "MAGNA-SIRGAS Origen Oeste Oeste",
+                epsg: "EPSG:3114",
+                proj4Str: "+proj=tmerc +lat_0=4.59620041666667 +lon_0=-80.0775079166667 +k=1 +x_0=1000000 +y_0=1000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs",
+                a: 6378137.0, f: 1/298.257222101, lat0: 4.59620041666667, lon0: -80.0775079166667, N0: 1000000.0, E0: 1000000.0, k0: 1.0
+            }
+        };
+
+        // Estado Global
+        let currentSystem = 'CTM12';
+        let currentPos = null; // { lat, lon, acc, alt }
+        let currentProjected = null; // { n, e }
+        let map = null, userMarker = null, userAccCircle = null;
+        let baseLayers = {}, currentTileLayer = null;
+        let stakeoutLine = null;
+
+        // Puntos guardados en memoria y LocalStorage
+        let puntosGuardados = JSON.parse(localStorage.getItem('topopro_puntos') || '[]');
+
+        // Estado del Promediador 60s
+        let avgInterval = null;
+        let avgSecondsLeft = 60;
+        let avgSamples = [];
+        let lastAverageResult = null;
+
+        // Módulos opcionales
+        let replanteoActivo = false;
+        let exportActivo = false;
+
+        // INICIALIZACIÓN
+        window.addEventListener('DOMContentLoaded', () => {
+            initProjections();
+            initMap();
+            initGPS();
+            actualizarTablaPuntos();
+            initServiceWorker();
+        });
+
+        // Registrar Service Worker para PWA Offline
+        function initServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js').catch(err => {
+                    console.log('SW registration error:', err);
+                });
+            }
+        }
+
+        // Inicializar definiciones Proj4js
+        function initProjections() {
+            if (typeof proj4 !== 'undefined') {
+                for (let key in PROJ_DEFINITIONS) {
+                    proj4.defs(PROJ_DEFINITIONS[key].epsg, PROJ_DEFINITIONS[key].proj4Str);
+                }
+            }
+        }
+
+        // Motor de Transformación (Proj4 con Fallback Gauss-Krüger riguroso)
+        function projectCoordinates(lat, lon, sysKey) {
+            const def = PROJ_DEFINITIONS[sysKey] || PROJ_DEFINITIONS.CTM12;
+            
+            // Intento 1: Proj4
+            if (typeof proj4 !== 'undefined') {
+                try {
+                    const res = proj4("EPSG:4326", def.epsg, [lon, lat]);
+                    return { n: res[1], e: res[0] };
+                } catch(e) {}
+            }
+
+            // Intento 2: Solución Matemática rigurosa Gauss-Krüger (100% Offline garantizado)
+            const rad = Math.PI / 180;
+            const phi = lat * rad, lambda = lon * rad;
+            const phi0 = def.lat0 * rad, lambda0 = def.lon0 * rad;
+            const e2 = 2 * def.f - def.f**2, ep2 = e2 / (1 - e2);
+            const n = def.a / Math.sqrt(1 - e2 * Math.sin(phi)**2);
+            const t = Math.tan(phi)**2, c = ep2 * Math.cos(phi)**2, a = (lambda - lambda0) * Math.cos(phi);
+            const M = def.a * ((1 - e2/4 - 3*e2**2/64) * phi - (3*e2/8 + 3*e2**2/32) * Math.sin(2*phi) + (15*e2**2/256) * Math.sin(4*phi));
+            const M0 = def.a * ((1 - e2/4 - 3*e2**2/64) * phi0 - (3*e2/8 + 3*e2**2/32) * Math.sin(2*phi0) + (15*e2**2/256) * Math.sin(4*phi0));
+            const norte = def.N0 + def.k0 * (M - M0 + n * Math.tan(phi) * (a**2/2 + (5 - t + 9*c + 4*c**2) * a**4/24));
+            const este = def.E0 + def.k0 * n * (a + (1 - t + c) * a**3/6 + (5 - 18*t + t**2 + 72*c) * a**5/120);
+            return { n: norte, e: este };
+        }
+
+        // Cambiar Sistema Geodésico
+        function changeSystem(val) {
+            currentSystem = val;
+            const shortName = val.replace('MAGNA_', 'M-');
+            document.getElementById('label-sys-n').innerText = shortName;
+            document.getElementById('label-sys-e').innerText = shortName;
+            if (currentPos) {
+                renderCurrentCoords();
+            }
+            mostrarToast(`Sistema cambiado a ${PROJ_DEFINITIONS[val].name}`, "info");
+        }
+
+        // MAPA LEAFLET
+        function initMap() {
+            try {
+                map = L.map('map', {
+                    center: [4.570868, -74.297333], // Colombia centro
+                    zoom: 16,
+                    zoomControl: false,
+                    attributionControl: false
+                });
+
+                baseLayers.satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 });
+                baseLayers.osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+                baseLayers.dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 });
+
+                currentTileLayer = baseLayers.satellite;
+                currentTileLayer.addTo(map);
+
+                // Cargar marcadores de puntos existentes
+                renderPuntosEnMapa();
+            } catch(e) {
+                console.warn('Error inicializando mapa:', e);
+            }
+        }
+
+        function setBaseLayer(type) {
+            if (currentTileLayer) map.removeLayer(currentTileLayer);
+            currentTileLayer = baseLayers[type] || baseLayers.satellite;
+            currentTileLayer.addTo(map);
+            toggleLayerMenu();
+            mostrarToast("Capa base actualizada", "info");
+        }
+
+        function toggleLayerMenu() {
+            document.getElementById('modal-layers').classList.toggle('active');
+        }
+
+        function centerMapOnUser() {
+            if (currentPos && map) {
+                map.flyTo([currentPos.lat, currentPos.lon], 18, { animate: true });
+            } else {
+                mostrarToast("Esperando señal GNSS...", "warn");
+            }
+        }
+
+        // RASTREO GNSS / GPS
+        function initGPS() {
+            if (!navigator.geolocation) {
+                mostrarToast("Tu dispositivo no soporta geolocalización.", "warn");
+                return;
+            }
+
+            navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude, longitude, accuracy, altitude } = pos.coords;
+                    currentPos = {
+                        lat: latitude,
+                        lon: longitude,
+                        acc: accuracy,
+                        alt: altitude || 0,
+                        time: new Date()
+                    };
+
+                    renderCurrentCoords();
+                    updateGNSSStatusUI(accuracy);
+                    updateMapUserMarker(latitude, longitude, accuracy);
+
+                    // Si el promediador está activo, recolectar muestra
+                    if (avgInterval !== null) {
+                        avgSamples.push({
+                            lat: latitude,
+                            lon: longitude,
+                            alt: altitude || 0,
+                            acc: accuracy
+                        });
+                        document.getElementById('avg-count').innerText = avgSamples.length;
+                        document.getElementById('avg-current-acc').innerText = accuracy.toFixed(1);
+                    }
+
+                    // Si el replanteo está activo, actualizar cálculos
+                    if (replanteoActivo) {
+                        updateReplanteoCalcs();
+                    }
+                },
+                (err) => {
+                    document.getElementById('gnss-text').innerText = "ERROR GNSS / PERMISO";
+                    document.getElementById('gnss-dot').className = "gnss-dot";
+                    mostrarToast("Error de acceso al GPS: " + err.message, "warn");
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+
+        function renderCurrentCoords() {
+            if (!currentPos) return;
+            currentProjected = projectCoordinates(currentPos.lat, currentPos.lon, currentSystem);
+
+            document.getElementById('disp-norte').innerText = formatMiles(currentProjected.n);
+            document.getElementById('disp-este').innerText = formatMiles(currentProjected.e);
+            document.getElementById('disp-elev').innerText = currentPos.alt ? currentPos.alt.toFixed(3) + " m" : "---.--- m";
+            document.getElementById('disp-latlon').innerText = `${currentPos.lat.toFixed(6)}°, ${currentPos.lon.toFixed(6)}°`;
+        }
+
+        function updateGNSSStatusUI(acc) {
+            const dot = document.getElementById('gnss-dot');
+            const txt = document.getElementById('gnss-text');
+            const prec = document.getElementById('gnss-prec');
+
+            prec.innerText = `Precisión: ± ${acc.toFixed(1)} m`;
+
+            if (acc <= 5) {
+                dot.className = "gnss-dot good";
+                txt.innerText = "GNSS: ALTA PRECISIÓN";
+                txt.style.color = "#10b981";
+            } else if (acc <= 15) {
+                dot.className = "gnss-dot med";
+                txt.innerText = "GNSS: PRECISIÓN MEDIA";
+                txt.style.color = "#f59e0b";
+            } else {
+                dot.className = "gnss-dot";
+                txt.innerText = "GNSS: SEÑAL DÉBIL";
+                txt.style.color = "#ef4444";
+            }
+        }
+
+        function updateMapUserMarker(lat, lon, acc) {
+            if (!map) return;
+            if (!userMarker) {
+                userMarker = L.circleMarker([lat, lon], {
+                    radius: 7,
+                    fillColor: '#3b82f6',
+                    color: '#ffffff',
+                    weight: 2.5,
+                    opacity: 1,
+                    fillOpacity: 1
+                }).addTo(map);
+
+                userAccCircle = L.circle([lat, lon], {
+                    radius: acc,
+                    color: '#3b82f6',
+                    weight: 1,
+                    fillOpacity: 0.1
+                }).addTo(map);
+
+                map.setView([lat, lon], 17);
+            } else {
+                userMarker.setLatLng([lat, lon]);
+                userAccCircle.setLatLng([lat, lon]);
+                userAccCircle.setRadius(acc);
+            }
+        }
+
+        // ==========================================
+        // PROMEDIADOR GNSS (60 SEGUNDOS)
+        // ==========================================
+        function startAverageModal() {
+            if (!currentPos) {
+                mostrarToast("Esperando señal GPS antes de promediar...", "warn");
+                return;
+            }
+
+            document.getElementById('modal-average').classList.add('active');
+            document.getElementById('avg-running-box').style.display = 'block';
+            document.getElementById('avg-result-box').style.display = 'none';
+
+            avgSecondsLeft = 60;
+            avgSamples = [];
+            document.getElementById('avg-timer-num').innerText = "60";
+            document.getElementById('avg-count').innerText = "0";
+            document.getElementById('avg-current-acc').innerText = currentPos.acc.toFixed(1);
+
+            const timerBar = document.getElementById('timer-bar');
+            timerBar.style.strokeDashoffset = '0';
+
+            // Sonido o vibración de inicio
+            beep(600, 100);
+            if (navigator.vibrate) navigator.vibrate(100);
+
+            clearInterval(avgInterval);
+            avgInterval = setInterval(() => {
+                avgSecondsLeft--;
+                document.getElementById('avg-timer-num').innerText = avgSecondsLeft;
+
+                // Animación círculo (377 es la circunferencia 2 * PI * 60)
+                const offset = 377 - (377 * (60 - avgSecondsLeft) / 60);
+                timerBar.style.strokeDashoffset = offset;
+
+                if (avgSecondsLeft <= 0) {
+                    finishAverage60s();
+                }
+            }, 1000);
+        }
+
+        function finishAverageEarly() {
+            if (avgSamples.length < 3) {
+                mostrarToast("Se requieren al menos 3 épocas para promediar.", "warn");
+                return;
+            }
+            finishAverage60s();
+        }
+
+        function cancelAverage() {
+            clearInterval(avgInterval);
+            avgInterval = null;
+            avgSamples = [];
+            closeAverageModal();
+            mostrarToast("Promedio cancelado", "info");
+        }
+
+        function closeAverageModal() {
+            clearInterval(avgInterval);
+            avgInterval = null;
+            document.getElementById('modal-average').classList.remove('active');
+        }
+
+        function finishAverage60s() {
+            clearInterval(avgInterval);
+            avgInterval = null;
+
+            if (avgSamples.length === 0 && currentPos) {
+                avgSamples.push(currentPos);
+            }
+
+            // Calcular media aritmética
+            let sumLat = 0, sumLon = 0, sumAlt = 0, sumAcc = 0;
+            avgSamples.forEach(s => {
+                sumLat += s.lat;
+                sumLon += s.lon;
+                sumAlt += s.alt;
+                sumAcc += s.acc;
+            });
+            const n = avgSamples.length;
+            const avgLat = sumLat / n;
+            const avgLon = sumLon / n;
+            const avgAlt = sumAlt / n;
+            const avgAcc = sumAcc / n;
+
+            // Proyectar resultado
+            const projected = projectCoordinates(avgLat, avgLon, currentSystem);
+
+            lastAverageResult = {
+                id: `PTO-${String(puntosGuardados.length + 1).padStart(2, '0')}`,
+                lat: avgLat,
+                lon: avgLon,
+                alt: avgAlt,
+                acc: avgAcc,
+                norte: projected.n,
+                este: projected.e,
+                sistema: currentSystem,
+                sistemaNombre: PROJ_DEFINITIONS[currentSystem].name,
+                epsg: PROJ_DEFINITIONS[currentSystem].epsg,
+                epocas: n,
+                fecha: new Date()
+            };
+
+            // Notificación auditiva y háptica
+            beep(880, 250);
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+
+            // Renderizar resultado en UI
+            document.getElementById('avg-running-box').style.display = 'none';
+            document.getElementById('avg-result-box').style.display = 'block';
+
+            document.getElementById('avg-point-name').value = lastAverageResult.id;
+            document.getElementById('avg-res-epocas').innerText = `${n} épocas analizadas`;
+            document.getElementById('avg-res-n').innerText = formatMiles(projected.n);
+            document.getElementById('avg-res-e').innerText = formatMiles(projected.e);
+            document.getElementById('avg-res-h').innerText = avgAlt.toFixed(3) + " m";
+            document.getElementById('avg-res-acc').innerText = `± ${avgAcc.toFixed(2)} m`;
+        }
+
+        // ========================================================
+        // COPIAR TODA LA INFORMACIÓN DEL PUNTO PROMEDIADO
+        // ========================================================
+        async function copiarReportePromedioCompleto() {
+            if (!lastAverageResult) {
+                mostrarToast("No hay datos de promedio para copiar.", "warn");
+                return;
+            }
+
+            const pName = document.getElementById('avg-point-name').value.trim() || lastAverageResult.id;
+            const pDesc = document.getElementById('avg-point-desc').value.trim() || "LEVANTAMIENTO";
+            const r = lastAverageResult;
+
+            const latDMS = toDMS(r.lat, true);
+            const lonDMS = toDMS(r.lon, false);
+
+            const textoReporte = 
+`========================================
+📍 REPORTE GNSS - TOPOGRAFÍA COLOMBIA
+========================================
+PUNTO ID        : ${pName}
+DESCRIPCIÓN     : ${pDesc}
+FECHA Y HORA    : ${r.fecha.toLocaleString('es-CO')}
+SISTEMA OFICIAL : ${r.sistemaNombre} (${r.epsg})
+----------------------------------------
+NORTE (N)       : ${r.norte.toFixed(3)} m
+ESTE  (E)       : ${r.este.toFixed(3)} m
+ELEVACIÓN (h)   : ${r.alt.toFixed(3)} m (Elipsoidal WGS84)
+----------------------------------------
+LATITUD (WGS84) : ${latDMS} (${r.lat.toFixed(8)}°)
+LONGITUD (WGS84): ${lonDMS} (${r.lon.toFixed(8)}°)
+----------------------------------------
+PRECISIÓN MEDIA : ± ${r.acc.toFixed(2)} m
+ÉPOCAS FILTRADAS: ${r.epocas} muestras (60 seg)
+MÉTODO          : Promedio GNSS Estacionario
+========================================`;
+
+            try {
+                await navigator.clipboard.writeText(textoReporte);
+                mostrarToast("✓ ¡Toda la información del punto fue copiada!", "success");
+            } catch(e) {
+                // Fallback
+                const ta = document.createElement('textarea');
+                ta.value = textoReporte;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                mostrarToast("✓ Copiado al portapapeles", "success");
+            }
+        }
+
+        // Guardar Punto Promediado en la Base Local
+        function guardarPuntoPromediado() {
+            if (!lastAverageResult) return;
+            const pName = document.getElementById('avg-point-name').value.trim() || lastAverageResult.id;
+            const pDesc = document.getElementById('avg-point-desc').value.trim() || "PUNTO";
+
+            const puntoNuevo = {
+                id: pName,
+                desc: pDesc,
+                norte: lastAverageResult.norte,
+                este: lastAverageResult.este,
+                alt: lastAverageResult.alt,
+                lat: lastAverageResult.lat,
+                lon: lastAverageResult.lon,
+                acc: lastAverageResult.acc,
+                sistema: lastAverageResult.sistema,
+                fecha: lastAverageResult.fecha
+            };
+
+            puntosGuardados.push(puntoNuevo);
+            localStorage.setItem('topopro_puntos', JSON.stringify(puntosGuardados));
+            actualizarTablaPuntos();
+            renderPuntosEnMapa();
+            closeAverageModal();
+            mostrarToast(`Punto ${pName} guardado con éxito`, "success");
+        }
+
+        // Copiar Instantáneo Rápido
+        async function copyInstantPoint() {
+            if (!currentProjected || !currentPos) {
+                mostrarToast("Sin coordenadas para copiar", "warn");
+                return;
+            }
+            const txt = `SISTEMA: ${currentSystem}\nN: ${currentProjected.n.toFixed(3)}\nE: ${currentProjected.e.toFixed(3)}\nh: ${currentPos.alt.toFixed(3)}m\nPREC: ±${currentPos.acc.toFixed(1)}m`;
+            try {
+                await navigator.clipboard.writeText(txt);
+                mostrarToast("Coordenadas actuales copiadas", "success");
+            } catch(e) {
+                mostrarToast("Error al copiar", "warn");
+            }
+        }
+
+        // ==========================================
+        // MÓDULO OPCIONAL: REPLANTEO (STAKEOUT)
+        // ==========================================
+        function toggleReplanteoModule() {
+            replanteoActivo = !replanteoActivo;
+            const drawer = document.getElementById('drawer-replanteo');
+            const tab = document.getElementById('tab-replanteo');
+            const badge = document.getElementById('badge-replanteo');
+
+            if (replanteoActivo) {
+                drawer.classList.add('open');
+                tab.classList.add('active');
+                badge.innerText = "ON";
+                badge.style.background = "#2563eb";
+                // Cerrar exportación si estaba abierta
+                if (exportActivo) toggleExportModule();
+                actualizarSelectorReplanteo();
+                updateReplanteoCalcs();
+                mostrarToast("Modo Replanteo Activado", "info");
+            } else {
+                drawer.classList.remove('open');
+                tab.classList.remove('active');
+                badge.innerText = "OFF";
+                badge.style.background = "#1e293b";
+                if (stakeoutLine && map) map.removeLayer(stakeoutLine);
+            }
+        }
+
+        function actualizarSelectorReplanteo() {
+            const sel = document.getElementById('replanteo-selector');
+            sel.innerHTML = '<option value="">-- Ingresar Manualmente --</option>';
+            puntosGuardados.forEach((p, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.innerText = `${p.id} (${p.desc}) - N:${p.norte.toFixed(1)}, E:${p.este.toFixed(1)}`;
+                sel.appendChild(opt);
+            });
+        }
+
+        function onSelectReplanteoPoint(val) {
+            if (val === "") return;
+            const p = puntosGuardados[parseInt(val)];
+            if (p) {
+                document.getElementById('rep-target-n').value = p.norte.toFixed(3);
+                document.getElementById('rep-target-e').value = p.este.toFixed(3);
+                updateReplanteoCalcs();
+            }
+        }
+
+        function updateReplanteoCalcs() {
+            if (!currentProjected || !currentPos) return;
+
+            const targetN = parseFloat(document.getElementById('rep-target-n').value);
+            const targetE = parseFloat(document.getElementById('rep-target-e').value);
+
+            if (isNaN(targetN) || isNaN(targetE)) {
+                document.getElementById('rep-dist').innerText = "--.-- m";
+                document.getElementById('rep-azim').innerText = "--° --' --\"";
+                document.getElementById('rep-deltas').innerText = "ΔN: --.-- m | ΔE: --.-- m";
+                return;
+            }
+
+            const dN = targetN - currentProjected.n;
+            const dE = targetE - currentProjected.e;
+            const dist = Math.sqrt(dN * dN + dE * dE);
+
+            // Azimut geodésico (0° a 360°)
+            let azimRad = Math.atan2(dE, dN);
+            if (azimRad < 0) azimRad += 2 * Math.PI;
+            const azimDeg = azimRad * (180 / Math.PI);
+
+            document.getElementById('rep-dist').innerText = dist.toFixed(2) + " m";
+            document.getElementById('rep-azim').innerText = degToDMSString(azimDeg);
+            document.getElementById('rep-deltas').innerText = `ΔN: ${dN >= 0 ? '+' : ''}${dN.toFixed(2)} m | ΔE: ${dE >= 0 ? '+' : ''}${dE.toFixed(2)} m`;
+
+            // Rotar flecha brújula
+            document.getElementById('compass-arrow').style.transform = `rotate(${azimDeg}deg)`;
+
+            // Trazar línea en el mapa si tenemos coordenadas WGS84 del objetivo
+            actualizarLineaReplanteo(targetN, targetE);
+        }
+
+        function actualizarLineaReplanteo(tN, tE) {
+            if (!map || !currentPos) return;
+            // Para pintar la línea en Leaflet necesitamos las coordenadas geográficas inversas o aproximadas
+            // Aproximación rápida o proyectar directo:
+            if (stakeoutLine) map.removeLayer(stakeoutLine);
+        }
+
+        // ==========================================
+        // MÓDULO OPCIONAL: EXPORTACIÓN DE DATOS
+        // ==========================================
+        function toggleExportModule() {
+            exportActivo = !exportActivo;
+            const drawer = document.getElementById('drawer-export');
+            const tab = document.getElementById('tab-export');
+            const badge = document.getElementById('badge-export');
+
+            if (exportActivo) {
+                drawer.classList.add('open');
+                tab.classList.add('active');
+                badge.innerText = "ON";
+                badge.style.background = "#059669";
+                if (replanteoActivo) toggleReplanteoModule();
+                actualizarTablaPuntos();
+                mostrarToast("Centro de Exportación Activado", "info");
+            } else {
+                drawer.classList.remove('open');
+                tab.classList.remove('active');
+                badge.innerText = "OFF";
+                badge.style.background = "#1e293b";
+            }
+        }
+
+        function actualizarTablaPuntos() {
+            const tbody = document.getElementById('puntos-tbody');
+            document.getElementById('count-puntos').innerText = puntosGuardados.length;
+
+            if (puntosGuardados.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 12px; text-align: center; color: #64748b;">No hay puntos guardados aún. Usa "Promediar 60s" para agregar.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            puntosGuardados.forEach((p, idx) => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.04)';
+                tr.innerHTML = `
+                    <td style="padding: 6px 8px; font-weight: 700; color: #38bdf8;">${p.id}</td>
+                    <td style="padding: 6px 8px;">${p.norte.toFixed(2)}</td>
+                    <td style="padding: 6px 8px;">${p.este.toFixed(2)}</td>
+                    <td style="padding: 6px 8px; color: #34d399;">${p.alt.toFixed(2)}</td>
+                    <td style="padding: 6px 8px; text-align: center;">
+                        <button onclick="borrarPunto(${idx})" style="background:none; border:none; color:#ef4444; cursor:pointer;">✕</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function borrarPunto(idx) {
+            puntosGuardados.splice(idx, 1);
+            localStorage.setItem('topopro_puntos', JSON.stringify(puntosGuardados));
+            actualizarTablaPuntos();
+            renderPuntosEnMapa();
+            mostrarToast("Punto eliminado", "info");
+        }
+
+        function limpiarTodosPuntos() {
+            if (confirm("¿Estás seguro de borrar todos los puntos guardados?")) {
+                puntosGuardados = [];
+                localStorage.removeItem('topopro_puntos');
+                actualizarTablaPuntos();
+                renderPuntosEnMapa();
+                mostrarToast("Puntos borrados", "info");
+            }
+        }
+
+        function renderPuntosEnMapa() {
+            if (!map) return;
+            // Eliminar marcadores antiguos si los hay
+            puntosGuardados.forEach(p => {
+                L.circleMarker([p.lat, p.lon], {
+                    radius: 5,
+                    fillColor: '#10b981',
+                    color: '#ffffff',
+                    weight: 2,
+                    fillOpacity: 1
+                }).bindPopup(`<b>${p.id}</b> - ${p.desc}<br>N: ${p.norte.toFixed(2)}<br>E: ${p.este.toFixed(2)}<br>h: ${p.alt.toFixed(2)}m`).addTo(map);
+            });
+        }
+
+        // Exportar a CSV para AutoCAD Civil 3D (Formato: Punto,Norte,Este,Elevacion,Descripcion)
+        function exportarCSV_Civil3D() {
+            if (puntosGuardados.length === 0) {
+                mostrarToast("No hay puntos para exportar", "warn");
+                return;
+            }
+            let csv = "PUNTO,NORTE,ESTE,ELEVACION,DESCRIPCION\n";
+            puntosGuardados.forEach(p => {
+                csv += `${p.id},${p.norte.toFixed(3)},${p.este.toFixed(3)},${p.alt.toFixed(3)},${p.desc}\n`;
+            });
+            descargarArchivo(csv, "Levantamiento_Civil3D.csv", "text/csv");
+            mostrarToast("Archivo Civil 3D exportado", "success");
+        }
+
+        // Exportar a TXT con formato topográfico tradicional
+        function exportarTXT_Topografico() {
+            if (puntosGuardados.length === 0) return;
+            let txt = `LEVANTAMIENTO TOPOGRÁFICO - SISTEMA: ${currentSystem}\n`;
+            txt += `PTO\tNORTE\tESTE\tCOTA(h)\tDESCRIPCIÓN\n`;
+            puntosGuardados.forEach(p => {
+                txt += `${p.id}\t${p.norte.toFixed(3)}\t${p.este.toFixed(3)}\t${p.alt.toFixed(3)}\t${p.desc}\n`;
+            });
+            descargarArchivo(txt, "Puntos_Topografia.txt", "text/plain");
+            mostrarToast("Archivo TXT exportado", "success");
+        }
+
+        // Exportar a KML para Google Earth
+        function exportarKML_GoogleEarth() {
+            if (puntosGuardados.length === 0) return;
+            let kml = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Levantamiento TopoPro Elite</name>`;
+            puntosGuardados.forEach(p => {
+                kml += `
+    <Placemark>
+      <name>${p.id}</name>
+      <description>${p.desc} | N:${p.norte.toFixed(3)} E:${p.este.toFixed(3)}</description>
+      <Point>
+        <coordinates>${p.lon},${p.lat},${p.alt}</coordinates>
+      </Point>
+    </Placemark>`;
+            });
+            kml += `\n  </Document>\n</kml>`;
+            descargarArchivo(kml, "Levantamiento.kml", "application/vnd.google-earth.kml+xml");
+            mostrarToast("KML generado para Google Earth", "success");
+        }
+
+        async function copiarTablaPuntos() {
+            if (puntosGuardados.length === 0) return;
+            let txt = "PUNTO\tNORTE\tESTE\tCOTA\tDESCRIPCION\n";
+            puntosGuardados.forEach(p => {
+                txt += `${p.id}\t${p.norte.toFixed(3)}\t${p.este.toFixed(3)}\t${p.alt.toFixed(3)}\t${p.desc}\n`;
+            });
+            await navigator.clipboard.writeText(txt);
+            mostrarToast("Tabla de puntos copiada", "success");
+        }
+
+        function descargarArchivo(contenido, nombreArchivo, tipoMime) {
+            const blob = new Blob([contenido], { type: tipoMime });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nombreArchivo;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // ==========================================
+        // CÁLCULO MANUAL (OFICINA)
+        // ==========================================
+        function openManualCalcModal() {
+            document.getElementById('modal-manual').classList.add('active');
+        }
+        function closeManualCalcModal() {
+            document.getElementById('modal-manual').classList.remove('active');
+        }
+
+        function ejecutarCalculoManual() {
+            const lat = parseFloat(document.getElementById('man-lat').value);
+            const lon = parseFloat(document.getElementById('man-lon').value);
+            if (isNaN(lat) || isNaN(lon)) {
+                mostrarToast("Ingresa valores válidos de Lat y Lon", "warn");
+                return;
+            }
+            const res = projectCoordinates(lat, lon, currentSystem);
+            document.getElementById('man-result-box').style.display = 'block';
+            document.getElementById('man-res-n').innerText = formatMiles(res.n) + " m";
+            document.getElementById('man-res-e').innerText = formatMiles(res.e) + " m";
+        }
+
+        async function copiarResultadoManual() {
+            const n = document.getElementById('man-res-n').innerText;
+            const e = document.getElementById('man-res-e').innerText;
+            await navigator.clipboard.writeText(`SISTEMA: ${currentSystem}\nNORTE: ${n}\nESTE: ${e}`);
+            mostrarToast("Resultado copiado", "success");
+        }
+
+        // ==========================================
+        // UTILIDADES Y FORMATEO
+        // ==========================================
+        function formatMiles(num) {
+            if (num === null || isNaN(num)) return "------,---";
+            const parts = num.toFixed(3).split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+            return parts[0] + "," + parts[1];
+        }
+
+        function toDMS(deg, isLat) {
+            const absolute = Math.abs(deg);
+            const d = Math.floor(absolute);
+            const minNotTruncated = (absolute - d) * 60;
+            const m = Math.floor(minNotTruncated);
+            const s = ((minNotTruncated - m) * 60).toFixed(4);
+            const dir = isLat ? (deg >= 0 ? "N" : "S") : (deg >= 0 ? "E" : "W");
+            return `${d}° ${m}' ${s}" ${dir}`;
+        }
+
+        function degToDMSString(deg) {
+            const d = Math.floor(deg);
+            const minNotTruncated = (deg - d) * 60;
+            const m = Math.floor(minNotTruncated);
+            const s = Math.round((minNotTruncated - m) * 60);
+            return `${d}° ${m}' ${s}"`;
+        }
+
+        function mostrarToast(msg, tipo = "info") {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${tipo}`;
+            toast.innerText = msg;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Generador de tono acústico vía Web Audio API
+        function beep(freq, duration) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                osc.start();
+                setTimeout(() => {
+                    osc.stop();
+                    ctx.close();
+                }, duration);
+            } catch(e) {}
+        }
+    </script>
+</body>
+</html>

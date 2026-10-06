@@ -1,0 +1,18 @@
+{
+  "name": "TopoPro Elite - GNSS & Topografía Colombia",
+  "short_name": "TopoPro",
+  "description": "Calculadora de coordenadas geodésicas CTM12 y MAGNA-SIRGAS, promediador GNSS y replanteo de campo.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%230f172a' stroke='%233b82f6' stroke-width='4'/><circle cx='50' cy='50' r='18' fill='%233b82f6'/><line x1='50' y1='10' x2='50' y2='90' stroke='%233b82f6' stroke-width='3'/><line x1='10' y1='50' x2='90' y2='50' stroke='%233b82f6' stroke-width='3'/></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
