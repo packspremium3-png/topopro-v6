@@ -1,4 +1,4 @@
-const CACHE_NAME = 'topopro-v6-cache-v1';
+const CACHE_NAME = 'topopro-v6-cache-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -35,10 +35,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Ignorar peticiones que no sean GET
   if (event.request.method !== 'GET') return;
 
-  // Ignorar peticiones de tiles satelitales en vivo para no sobrecargar el almacenamiento local
   const url = event.request.url;
   if (url.includes('tile.openstreetmap.org') || url.includes('server.arcgisonline.com')) {
     event.respondWith(
